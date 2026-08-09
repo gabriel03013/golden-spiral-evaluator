@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+python-multipart
+
+opencv-python-headless
+numpy
+Pillow
+scikit-learn
+
+langchain
+langchain-groq
+
+python-dotenv
+pydantic
