@@ -8,7 +8,7 @@ Pillow
 scikit-learn
 
 langchain
-langchain-openai
+langchain-groq
 
 python-dotenv
 pydantic
