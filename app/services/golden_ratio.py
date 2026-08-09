@@ -180,14 +180,9 @@ def calculate_focal_point_score(
 def calculate_spiral_score(
     image: np.ndarray
 ) -> float:
-
     """
     Aproxima a presença de uma distribuição
-    compatível com a espiral áurea.
-
-    Não tenta afirmar que existe uma espiral
-    geométrica perfeita; mede concentração
-    visual em regiões áureas.
+    compatível com a espiral áurea usando NumPy vetorizado.
     """
 
     gray = cv2.cvtColor(
@@ -203,40 +198,24 @@ def calculate_spiral_score(
 
     height, width = gray.shape
 
-    cx = width / 2
-    cy = height / 2
+    cx = width / 2.0
+    cy = height / 2.0
 
-    golden_region = np.zeros_like(edges)
+    y_indices, x_indices = np.ogrid[:height, :width]
+    dx = x_indices - cx
+    dy = y_indices - cy
 
-    for y in range(height):
-        for x in range(width):
+    distance = np.hypot(dx, dy)
+    angle = np.arctan2(dy, dx)
 
-            dx = x - cx
-            dy = y - cy
+    theta = angle + math.pi * 2.0
+    radius = (
+        min(width, height)
+        * 0.08
+        * np.exp(0.306349 * theta)
+    )
 
-            distance = math.sqrt(
-                dx * dx + dy * dy
-            )
-
-            angle = math.atan2(
-                dy,
-                dx
-            )
-
-            # Espiral logarítmica aproximada
-            theta = angle + math.pi * 2
-
-            radius = (
-                min(width, height)
-                * 0.08
-                * math.exp(
-                    0.306349 * theta
-                )
-            )
-
-            if abs(distance - radius) < 10:
-
-                golden_region[y, x] = 255
+    golden_region = (np.abs(distance - radius) < 10).astype(np.uint8) * 255
 
     intersection = cv2.bitwise_and(
         edges,
@@ -257,6 +236,7 @@ def calculate_spiral_score(
         float(score * 4),
         100.0
     )
+
 
 
 def analyze_golden_ratio(
