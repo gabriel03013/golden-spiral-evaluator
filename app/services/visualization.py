@@ -2,64 +2,49 @@ import cv2
 import numpy as np
 import math
 import base64
+from app.services.golden_ratio import decompose_golden_rectangle
 
 
 PHI = (1 + math.sqrt(5)) / 2
+GOLD_COLOR = (0, 215, 255)       # Amarelo Ouro vibrante em BGR (#FFD700)
+DARK_GOLD_OUTLINE = (0, 50, 100)  # Contorno escuro para contraste em fundos claros
 
 
 def draw_dashed_line(
     image,
     p1,
     p2,
-    color,
+    color=GOLD_COLOR,
     thickness=2,
     dash_length=10
 ):
     """
-    Desenha uma linha tracejada entre dois pontos.
+    Desenha uma linha tracejada antialiased entre dois pontos.
     """
-
     x1, y1 = p1
     x2, y2 = p2
 
     dx = x2 - x1
     dy = y2 - y1
-
-    distance = math.sqrt(
-        dx ** 2 + dy ** 2
-    )
+    distance = math.hypot(dx, dy)
 
     if distance == 0:
         return
 
     ux = dx / distance
     uy = dy / distance
-
     current = 0
 
     while current < distance:
-
         start = current
-        end = min(
-            current + dash_length,
-            distance
-        )
+        end = min(current + dash_length, distance)
 
         sx = int(x1 + ux * start)
         sy = int(y1 + uy * start)
-
         ex = int(x1 + ux * end)
         ey = int(y1 + uy * end)
 
-        cv2.line(
-            image,
-            (sx, sy),
-            (ex, ey),
-            color,
-            thickness,
-            cv2.LINE_AA
-        )
-
+        cv2.line(image, (sx, sy), (ex, ey), color, thickness, cv2.LINE_AA)
         current += dash_length * 2
 
 
@@ -69,473 +54,103 @@ def draw_dashed_rectangle(
     y,
     w,
     h,
-    color=(0, 215, 255),
+    color=GOLD_COLOR,
     thickness=2
 ):
     """
-    Desenha um retângulo tracejado.
+    Desenha um retângulo tracejado com cantos destacados.
     """
-
-    draw_dashed_line(
-        image,
-        (x, y),
-        (x + w, y),
-        color,
-        thickness
-    )
-
-    draw_dashed_line(
-        image,
-        (x + w, y),
-        (x + w, y + h),
-        color,
-        thickness
-    )
-
-    draw_dashed_line(
-        image,
-        (x + w, y + h),
-        (x, y + h),
-        color,
-        thickness
-    )
-
-    draw_dashed_line(
-        image,
-        (x, y + h),
-        (x, y),
-        color,
-        thickness
-    )
+    draw_dashed_line(image, (x, y), (x + w, y), color, thickness)
+    draw_dashed_line(image, (x + w, y), (x + w, y + h), color, thickness)
+    draw_dashed_line(image, (x + w, y + h), (x, y + h), color, thickness)
+    draw_dashed_line(image, (x, y + h), (x, y), color, thickness)
 
 
-def find_best_rectangle(
+def draw_golden_grid(
     image,
-    rectangles
+    rectangle,
+    color=GOLD_COLOR,
+    thickness=1
 ):
     """
-    Escolhe o retângulo mais relevante.
-
-    Ignora objetos muito pequenos para evitar
-    que pequenos detalhes da imagem sejam
-    interpretados como a composição principal.
+    Desenha a Grade do Segmento Áureo (Linhas de Seção Áurea em 0.382 e 0.618).
     """
-
-    height, width = image.shape[:2]
-
-    image_area = width * height
-
-    valid = []
-
-    for rectangle in rectangles:
-
-        w = rectangle.get(
-            "width",
-            0
-        )
-
-        h = rectangle.get(
-            "height",
-            0
-        )
-
-        score = rectangle.get(
-            "score",
-            0
-        )
-
-        area = w * h
-
-        # Ignora objetos que ocupam menos de 5%
-        # da imagem.
-        if area < image_area * 0.05:
-            continue
-
-        valid.append(
-            rectangle
-        )
-
-    if not valid:
-        return None
-
-    # Combina tamanho e score.
-    return max(
-        valid,
-        key=lambda r: (
-            r.get("score", 0) *
-            math.sqrt(
-                (
-                    r["width"] *
-                    r["height"]
-                ) / image_area
-            )
-        )
-    )
-
-
-def fit_golden_rectangle(
-    image,
-    rectangle
-):
-    """
-    Cria um retângulo áureo dentro do
-    retângulo detectado.
-
-    Isso garante que a visualização
-    tenha proporção φ mesmo quando o
-    retângulo detectado não for perfeito.
-    """
-
-    image_height, image_width = image.shape[:2]
-
-    if rectangle is None:
-
-        # Fallback:
-        # utiliza uma grande área central
-        # da imagem.
-
-        margin_x = image_width * 0.10
-        margin_y = image_height * 0.10
-
-        available_width = (
-            image_width
-            - 2 * margin_x
-        )
-
-        available_height = (
-            image_height
-            - 2 * margin_y
-        )
-
-        if available_width >= available_height:
-
-            h = available_height
-            w = h * PHI
-
-        else:
-
-            w = available_width
-            h = w * PHI
-
-        if w > available_width:
-
-            w = available_width
-            h = w / PHI
-
-        if h > available_height:
-
-            h = available_height
-            w = h / PHI
-
-        x = (
-            image_width - w
-        ) / 2
-
-        y = (
-            image_height - h
-        ) / 2
-
-        return {
-            "x": int(x),
-            "y": int(y),
-            "width": int(w),
-            "height": int(h)
-        }
-
     x = rectangle["x"]
     y = rectangle["y"]
-
     w = rectangle["width"]
     h = rectangle["height"]
 
-    # Se o candidato é horizontal
-    if w >= h:
+    gx1 = int(x + w * 0.381966)
+    gx2 = int(x + w * 0.618034)
+    gy1 = int(y + h * 0.381966)
+    gy2 = int(y + h * 0.618034)
 
-        golden_height = h
-        golden_width = h * PHI
+    # Linhas verticais do segmento áureo
+    draw_dashed_line(image, (gx1, y), (gx1, y + h), color, thickness, dash_length=6)
+    draw_dashed_line(image, (gx2, y), (gx2, y + h), color, thickness, dash_length=6)
 
-        # Caso não caiba
-        if golden_width > w:
+    # Linhas horizontais do segmento áureo
+    draw_dashed_line(image, (x, gy1), (x + w, gy1), color, thickness, dash_length=6)
+    draw_dashed_line(image, (x, gy2), (x + w, gy2), color, thickness, dash_length=6)
 
-            golden_width = w
-            golden_height = w / PHI
-
-    else:
-
-        golden_width = w
-        golden_height = w * PHI
-
-        # Caso não caiba
-        if golden_height > h:
-
-            golden_height = h
-            golden_width = h / PHI
-
-    # Centraliza o retângulo áureo
-    # dentro do retângulo detectado.
-
-    new_x = (
-        x
-        +
-        (w - golden_width) / 2
-    )
-
-    new_y = (
-        y
-        +
-        (h - golden_height) / 2
-    )
-
-    return {
-        "x": int(new_x),
-        "y": int(new_y),
-        "width": int(golden_width),
-        "height": int(golden_height)
-    }
-
-
-def draw_golden_decomposition(
-    image,
-    rectangle,
-    color=(0, 215, 255),
-    thickness=2
-):
-    """
-    Divide o retângulo áureo em quadrados
-    sucessivos.
-    """
-
-    x = float(rectangle["x"])
-    y = float(rectangle["y"])
-
-    w = float(rectangle["width"])
-    h = float(rectangle["height"])
-
-    squares = []
-
-    # Começamos removendo quadrados
-    # alternadamente dos lados.
-
-    for _ in range(8):
-
-        if w <= 2 or h <= 2:
-            break
-
-        if w >= h:
-
-            size = h
-
-            square = {
-                "x": x,
-                "y": y,
-                "size": size,
-                "side": "left"
-            }
-
-            squares.append(square)
-
-            x += size
-            w -= size
-
-        else:
-
-            size = w
-
-            square = {
-                "x": x,
-                "y": y,
-                "size": size,
-                "side": "top"
-            }
-
-            squares.append(square)
-
-            y += size
-            h -= size
-
-    # Agora desenhamos os quadrados.
-
-    for square in squares:
-
-        sx = int(square["x"])
-        sy = int(square["y"])
-        size = int(square["size"])
-
-        draw_dashed_rectangle(
-            image,
-            sx,
-            sy,
-            size,
-            size,
-            color,
-            thickness
-        )
-
-    return squares
+    # Marcadores dos 4 Pontos Focais Áureos (Olhos do Segmento Áureo)
+    for px, py in [(gx1, gy1), (gx2, gy1), (gx1, gy2), (gx2, gy2)]:
+        cv2.circle(image, (px, py), 5, (0, 0, 0), -1, cv2.LINE_AA)
+        cv2.circle(image, (px, py), 4, color, -1, cv2.LINE_AA)
 
 
 def draw_golden_spiral(
     image,
-    rectangle,
-    color=(0, 215, 255),
-    thickness=5
+    squares,
+    color=GOLD_COLOR,
+    thickness=4
 ):
     """
-    Desenha uma espiral áurea baseada na
-    decomposição do retângulo em quadrados.
+    Desenha a espiral áurea contínua perfeita através dos arcos de cada quadrado decomposto.
     """
+    for sq in squares:
+        cx, cy = int(sq["arc_center"][0]), int(sq["arc_center"][1])
+        r = int(sq["size"])
+        a_start, a_end = sq["angles"]
 
-    x = float(rectangle["x"])
-    y = float(rectangle["y"])
+        if r <= 1:
+            continue
 
-    w = float(rectangle["width"])
-    h = float(rectangle["height"])
+        # Linha de fundo escura para máximo contraste em fundos claros
+        cv2.ellipse(
+            image,
+            (cx, cy),
+            (r, r),
+            0,
+            a_start,
+            a_end,
+            DARK_GOLD_OUTLINE,
+            thickness + 2,
+            cv2.LINE_AA
+        )
 
-    # Determina por qual lado começamos.
+        # Curva da espiral em ouro vibrante
+        cv2.ellipse(
+            image,
+            (cx, cy),
+            (r, r),
+            0,
+            a_start,
+            a_end,
+            color,
+            thickness,
+            cv2.LINE_AA
+        )
 
-    if w >= h:
+    # Olho da Espiral (último centro)
+    if squares:
+        last_sq = squares[-1]
+        eye_x = int(last_sq["x"] + last_sq["size"] / 2.0)
+        eye_y = int(last_sq["y"] + last_sq["size"] / 2.0)
 
-        side = "left"
-
-    else:
-
-        side = "top"
-
-    for _ in range(10):
-
-        if w <= 3 or h <= 3:
-            break
-
-        if side == "left":
-
-            size = h
-
-            # Centro no canto inferior direito
-            # do quadrado.
-
-            center_x = x + size
-            center_y = y + size
-
-            cv2.ellipse(
-                image,
-                (
-                    int(center_x),
-                    int(center_y)
-                ),
-                (
-                    int(size),
-                    int(size)
-                ),
-                0,
-                180,
-                270,
-                color,
-                thickness,
-                cv2.LINE_AA
-            )
-
-            x += size
-            w -= size
-
-            side = "top"
-
-        elif side == "top":
-
-            size = w
-
-            # Centro no canto inferior esquerdo.
-
-            center_x = x
-            center_y = y + size
-
-            cv2.ellipse(
-                image,
-                (
-                    int(center_x),
-                    int(center_y)
-                ),
-                (
-                    int(size),
-                    int(size)
-                ),
-                0,
-                270,
-                360,
-                color,
-                thickness,
-                cv2.LINE_AA
-            )
-
-            y += size
-            h -= size
-
-            side = "right"
-
-        elif side == "right":
-
-            size = h
-
-            # Centro no canto superior esquerdo.
-
-            center_x = x
-            center_y = y
-
-            cv2.ellipse(
-                image,
-                (
-                    int(center_x),
-                    int(center_y)
-                ),
-                (
-                    int(size),
-                    int(size)
-                ),
-                0,
-                0,
-                90,
-                color,
-                thickness,
-                cv2.LINE_AA
-            )
-
-            x += 0
-            w -= size
-
-            side = "bottom"
-
-        elif side == "bottom":
-
-            size = w
-
-            # Centro no canto superior direito.
-
-            center_x = x + size
-            center_y = y
-
-            cv2.ellipse(
-                image,
-                (
-                    int(center_x),
-                    int(center_y)
-                ),
-                (
-                    int(size),
-                    int(size)
-                ),
-                0,
-                90,
-                180,
-                color,
-                thickness,
-                cv2.LINE_AA
-            )
-
-            y += 0
-            h -= size
-
-            side = "left"
-
-    return image
+        cv2.circle(image, (eye_x, eye_y), 7, DARK_GOLD_OUTLINE, -1, cv2.LINE_AA)
+        cv2.circle(image, (eye_x, eye_y), 5, color, -1, cv2.LINE_AA)
+        cv2.circle(image, (eye_x, eye_y), 2, (255, 255, 255), -1, cv2.LINE_AA)
 
 
 def create_harmony_visualization(
@@ -543,95 +158,87 @@ def create_harmony_visualization(
     golden_analysis
 ):
     """
-    Cria a visualização final da análise áurea.
-
-    Mostra:
-
-    - retângulo áureo;
-    - decomposição em quadrados;
-    - espiral áurea.
-
-    Não mostra scores, números ou pontos.
+    Cria a visualização final completa da análise áurea com suporte às 4 orientações,
+    Segmento Áureo, Retângulo e Espiral Áurea.
     """
-
     result = image.copy()
+    height, width = result.shape[:2]
 
-    rectangles = golden_analysis.get(
-        "detected_rectangles",
-        []
-    )
+    rectangles = golden_analysis.get("detected_rectangles", [])
 
-    best_rectangle = find_best_rectangle(
-        result,
-        rectangles
-    )
+    if rectangles:
+        best_rect = rectangles[0]
+        orientation = best_rect.get("orientation", 0)
+    else:
+        orientation = golden_analysis.get("orientation", 0)
+        # Fallback para o retângulo com melhor proporção na imagem
+        crop_w = width
+        crop_h = width / PHI
+        if crop_h > height:
+            crop_h = height
+            crop_w = height * PHI
+        best_rect = {
+            "x": int((width - crop_w) / 2),
+            "y": int((height - crop_h) / 2),
+            "width": int(crop_w),
+            "height": int(crop_h)
+        }
 
-    golden_rectangle = fit_golden_rectangle(
-        result,
-        best_rectangle
-    )
-
-    # --------------------------------------------------
-    # 1. Retângulo principal
-    # --------------------------------------------------
-
+    # 1. Desenha o Retângulo Áureo Principal
     draw_dashed_rectangle(
         result,
-        golden_rectangle["x"],
-        golden_rectangle["y"],
-        golden_rectangle["width"],
-        golden_rectangle["height"],
-        color=(0, 215, 255),
+        best_rect["x"],
+        best_rect["y"],
+        best_rect["width"],
+        best_rect["height"],
+        color=GOLD_COLOR,
         thickness=2
     )
 
-    # --------------------------------------------------
-    # 2. Decomposição
-    # --------------------------------------------------
-
-    draw_golden_decomposition(
+    # 2. Desenha a Grade do Segmento Áureo (Linhas 0.382 e 0.618)
+    draw_golden_grid(
         result,
-        golden_rectangle,
-        color=(0, 215, 255),
-        thickness=2
+        best_rect,
+        color=GOLD_COLOR,
+        thickness=1
     )
 
-    # --------------------------------------------------
-    # 3. Espiral
-    # --------------------------------------------------
+    # 3. Decomposição em Quadrados Áureos conforme a orientação detectada
+    squares = decompose_golden_rectangle(best_rect, orientation=orientation, steps=8)
 
+    for sq in squares:
+        draw_dashed_rectangle(
+            result,
+            int(sq["x"]),
+            int(sq["y"]),
+            int(sq["size"]),
+            int(sq["size"]),
+            color=GOLD_COLOR,
+            thickness=1
+        )
+
+    # 4. Desenha a Espiral Áurea Logarítmica
     draw_golden_spiral(
         result,
-        golden_rectangle,
-        color=(0, 215, 255),
-        thickness=5
+        squares,
+        color=GOLD_COLOR,
+        thickness=4
     )
 
     return result
 
 
-def image_to_base64(
-    image
-):
+def image_to_base64(image):
     """
-    Converte a imagem OpenCV para Base64.
+    Converte a imagem OpenCV para Base64 em formato JPG.
     """
-
     success, buffer = cv2.imencode(
         ".jpg",
         image,
-        [
-            cv2.IMWRITE_JPEG_QUALITY,
-            90
-        ]
+        [cv2.IMWRITE_JPEG_QUALITY, 92]
     )
 
     if not success:
+        raise ValueError("Não foi possível gerar a visualização.")
 
-        raise ValueError(
-            "Não foi possível gerar a visualização."
-        )
-
-    return base64.b64encode(
-        buffer
-    ).decode("utf-8")
+    return base64.b64encode(buffer).decode("utf-8")

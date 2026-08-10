@@ -66,13 +66,14 @@ async def analisar(
                 "rectangle_score": analysis["golden_ratio"]["rectangle_score"],
                 "focal_point_score": analysis["golden_ratio"]["focal_point_score"],
                 "spiral_score": analysis["golden_ratio"]["spiral_score"],
+                "orientation_name": analysis["golden_ratio"].get("orientation_name", "Superior Esquerda"),
                 "number_of_rectangles": len(
                     analysis["golden_ratio"]["detected_rectangles"]
                 )
             },
 
-    "colors": analysis["colors"]
-}
+            "colors": analysis["colors"]
+        }
         
         report = create_report(
             report_data,

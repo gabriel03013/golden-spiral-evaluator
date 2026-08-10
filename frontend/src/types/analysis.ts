@@ -6,6 +6,11 @@ export interface DetectedRectangle {
   ratio: number;
   golden_error: number;
   score: number;
+  orientation?: number;
+  orientation_name?: string;
+  spiral_score?: number;
+  grid_score?: number;
+  focal_score?: number;
 }
 
 export interface GoldenRatioMetrics {
@@ -15,6 +20,8 @@ export interface GoldenRatioMetrics {
   rectangle_score: number;
   focal_point_score: number;
   spiral_score: number;
+  orientation?: number;
+  orientation_name?: string;
   detected_rectangles: DetectedRectangle[];
 }
 
