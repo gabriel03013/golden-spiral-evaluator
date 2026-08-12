@@ -238,10 +238,12 @@ def detect_rectangles(image: np.ndarray) -> list:
     """
     Detecção avançada multiescala de retângulos e regiões candidatas a Proporção Áurea.
     Prioriza a enquadração composicional macro da imagem (arte/sujeito principal)
-    e evita caixas minúsculas irrelevantes.
+    e alinha automaticamente a espiral com a posição focal do sujeito.
     """
     height, width = image.shape[:2]
     img_area = width * height
+    is_vertical_image = height > width
+
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     edges = cv2.Canny(blurred, 50, 150)
@@ -254,12 +256,20 @@ def detect_rectangles(image: np.ndarray) -> list:
 
     candidate_boxes = []
 
-    # 1. Enquadramento Global Centrado (100%)
-    crop_w = width
-    crop_h = width / PHI
-    if crop_h > height:
+    # 1. Enquadramento Global Centrado principal (100%)
+    if is_vertical_image:
         crop_h = height
-        crop_w = height * PHI
+        crop_w = height / PHI
+        if crop_w > width:
+            crop_w = width
+            crop_h = width * PHI
+    else:
+        crop_w = width
+        crop_h = width / PHI
+        if crop_h > height:
+            crop_h = height
+            crop_w = height * PHI
+
     crop_x = (width - crop_w) / 2.0
     crop_y = (height - crop_h) / 2.0
     candidate_boxes.append((int(crop_x), int(crop_y), int(crop_w), int(crop_h)))
@@ -310,6 +320,7 @@ def detect_rectangles(image: np.ndarray) -> list:
 
         rect_area = rw * rh
         area_coverage = rect_area / float(img_area)
+        is_rect_vertical = rh > rw
 
         ratio = max(rw, rh) / min(rw, rh)
         aspect_sc = ratio_score(ratio)
@@ -364,15 +375,18 @@ def detect_rectangles(image: np.ndarray) -> list:
 
             dist = math.hypot(cx_local - eye_x, cy_local - eye_y)
             max_dist = math.hypot(rw, rh)
-            focal_sc = max(0.0, 100.0 * (1.0 - (dist / (max_dist * 0.5))))
+            focal_sc = max(0.0, 100.0 * (1.0 - (dist / (max_dist * 0.4))))
 
-            orient_score = 0.45 * spiral_sc + 0.35 * focal_sc + 0.20 * grid_sc
+            orient_score = 0.40 * spiral_sc + 0.45 * focal_sc + 0.15 * grid_sc
 
             if orient_score > best_orient_score:
                 best_orient_score = orient_score
                 best_orient = orient
                 best_spiral_sc = spiral_sc
                 best_focal_sc = focal_sc
+
+        # Bônus para concordância de orientação de formato (imagem vertical -> retângulo vertical)
+        orientation_harmony_bonus = 1.15 if (is_vertical_image == is_rect_vertical) else 0.85
 
         # Fator de Cobertura de Área (Privilegia enquadramento composicional de toda a arte)
         if area_coverage < 0.10:
@@ -387,7 +401,7 @@ def detect_rectangles(image: np.ndarray) -> list:
             best_spiral_sc * 0.35 +
             best_grid_sc * 0.20 +
             best_focal_sc * 0.20
-        ) * area_weight
+        ) * area_weight * orientation_harmony_bonus
 
         rect_data = {
             "x": int(rx),
@@ -407,6 +421,8 @@ def detect_rectangles(image: np.ndarray) -> list:
 
     scored_rectangles.sort(key=lambda item: item["score"], reverse=True)
     return scored_rectangles[:10]
+
+
 
 
 def calculate_focal_point_score(image: np.ndarray) -> float:
